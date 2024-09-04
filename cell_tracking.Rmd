@@ -1,0 +1,552 @@
+---
+title: "THP1 cell tracking + characterization"
+author: "Marion Hardy"
+date: Sys.Date()
+output: 
+  html_document: 
+    toc: true
+    theme: spacelab
+    highlight: monochrome
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, cache = TRUE, echo = FALSE, warning = F, cache.lazy = F)
+knitr::opts_chunk$set(fig.width=10, fig.height=12) 
+
+library(tidyverse)
+library(XML)
+library(openxlsx)
+library(cowplot)
+library(ggpubr)
+library(rstatix)
+library(kableExtra)
+
+```
+
+```{r Data loading, include=FALSE}
+
+xys = c("xy01","xy02","xy05","xy06","xy07","xy08","xy12","xy13","xy14","xy15",
+        "xy18","xy19","xy20","xy21","xy24","xy25")
+
+
+for(i in 1:length(xys)){
+  tracks = read.csv(paste0("./data_output/",xys[i],"/",
+                           paste0(xys[i],"_spots.csv")), stringsAsFactors = F)
+  tracks = tracks[-c(1:3),]
+  tracks[,-1] = as.numeric(unlist(tracks[,-1])) # because of the first 3 lines being chr, gotta change table into num
+  tracks$TRACK_ID = as.factor(tracks$TRACK_ID)
+  tracks$xy = xys[i]
+  tracks = tracks %>% filter(!is.na(TRACK_ID))
+  tracks = arrange(tracks, POSITION_T) # to get geom_path right
+  assign(xys[i],tracks)
+}
+
+
+```
+
+# Introduction
+
+```{r}
+
+head(tracks)
+
+head(table(tracks$TRACK_ID, tracks$FRAME))
+
+```
+
+TRACK_ID is the reference to the track, the number of time it appears is the number of frames it was tracked through. 
+Every line is the track (center of the spot), its frame and the characteristics of the spot being tracked (area, circularity, intensity, ...)
+
+# Spider plotting the tracks if possible
+
+```{r, fig.height=3, fig.width=3}
+
+p1 = 
+xy02 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy02: 1000 cells, glass")
+
+# little bit of a mindfuck but these are flipped horizontally compared to the
+# imageJ trackmate video output
+
+p2 = 
+xy05 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy05: 1000 cells, collagen")
+
+p3 = 
+xy12 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy12: 2000 cells, glass")
+
+p4 = 
+xy07 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy07: 2000 cells, collagen")
+
+p5 = 
+xy14 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy14: 5000 cells, glass")
+
+p6 = 
+xy18 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy18: 5000 cells, collagen")
+
+p7 = 
+xy24 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy24: 10 000 cells, glass")
+
+p8 = 
+xy20 %>% 
+  ggplot(aes(x = POSITION_X,
+             y = POSITION_Y,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  theme(legend.position = "none")+
+  labs(title = "xy20: 10 000 cells, collagen")
+
+```
+
+```{r, fig.height=8, fig.width=16}
+
+plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, ncol = 4 , align = "hv")
+
+```
+
+## Centering the tracks to 0,0
+
+
+```{r}
+
+vars = list(xy01,xy02,xy05,xy06,xy07,xy08,xy12,xy13,xy14,xy15,
+        xy18,xy19,xy20,xy21,xy24,xy25)
+
+for(i in 1:length(vars)){
+  vars_0 =
+  vars[[i]] %>% 
+  group_by(TRACK_ID) %>% 
+  filter(FRAME == min(FRAME)) %>% 
+  select(TRACK_ID, POSITION_X, POSITION_Y)
+  
+  colnames(vars_0) = c("TRACK_ID", "X_initial", "Y_initial")
+  upd_xy = left_join(vars[[i]], vars_0)
+
+  upd_xy = 
+  upd_xy %>% 
+    group_by(TRACK_ID) %>% 
+    mutate(X_adjusted = POSITION_X - X_initial,
+         Y_adjusted = POSITION_Y - Y_initial)
+  assign(xys[i],upd_xy)}
+
+```
+
+
+
+```{r}
+
+p1 = 
+xy02 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy02: 1000 cells, glass")
+
+# little bit of a mindfuck but these are flipped horizontally compared to the
+# imageJ trackmate video output
+
+p2 = 
+xy05 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy05: 1000 cells, collagen")
+
+p3 = 
+xy12 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy12: 2000 cells, glass")
+
+p4 = 
+xy07 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy07: 2000 cells, collagen")
+
+p5 = 
+xy14 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy14: 5000 cells, glass")
+
+p6 = 
+xy18 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy18: 5000 cells, collagen")
+
+p7 = 
+xy24 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy24: 10 000 cells, glass")
+
+p8 = 
+xy20 %>% 
+  ggplot(aes(x = X_adjusted,
+             y = Y_adjusted,
+             color = TRACK_ID))+
+  geom_path()+ 
+  theme_bw()+
+  scale_x_continuous(limits = c(-500, 500))+
+  scale_y_continuous(limits = c(-500, 500))+
+  theme(legend.position = "none")+
+  labs(title = "xy20: 10 000 cells, collagen")
+
+
+```
+
+
+
+```{r, fig.height=8, fig.width=16}
+
+plot_grid(p1, p2, p3, p4, p5, p6, p7, p8, ncol = 4 , align = "hv")
+
+```
+
+# Let's get some numbers on that
+
+## Checking average displacement
+
+```{r, fig.width=6, fig.height=3}
+
+# This time i need to import the tracks table with their characteristics
+
+
+for(i in 1:length(xys)){
+  tracks = read.csv(paste0("./data_output/",xys[i],"/",
+                           paste0(xys[i],"_tracks.csv")), stringsAsFactors = F)
+  tracks = tracks[-c(1:3),]
+  tracks[,-1] = as.numeric(unlist(tracks[,-1])) # because of the first 3 lines being chr, gotta change table into num
+  tracks$TRACK_ID = as.factor(tracks$TRACK_ID)
+  tracks$xy = xys[i]
+  tracks = tracks %>% filter(!is.na(TRACK_ID))
+  assign(xys[i],tracks)
+}
+
+vars = list(xy01,xy02,xy05,xy06,xy07,xy08,xy12,xy13,xy14,xy15,
+        xy18,xy19,xy20,xy21,xy24,xy25)
+
+# merge
+
+all = vars %>% 
+  purrr::reduce(full_join)
+
+```
+
+
+```{r}
+# Annotate the data further
+
+all =
+  all %>% 
+  mutate(Surface = ifelse(
+    xy %in% c("xy01","xy02","xy12","xy13","xy14","xy15",
+        "xy24","xy25"), "Glass","Collagen")) %>% 
+  mutate(Cell_seeded = ifelse(
+    xy %in% c("xy01","xy02","xy05","xy06"), "1000 cells",
+    ifelse(xy %in% c("xy12","xy13","xy07","xy08"), "2000 cells",
+    ifelse(xy %in% c("xy14","xy15","xy18","xy19"), "5000 cells",
+    ifelse(xy %in% c("xy24","xy25","xy20","xy21"), "10 000 cells",NA)))))
+
+
+table(all$Cell_seeded, all$Surface)
+
+
+```
+
+```{r}
+
+p1 = 
+all %>% 
+  ggplot(aes(x = TRACK_DISPLACEMENT, col = Surface))+
+  geom_freqpoly()+
+  theme_bw()
+
+p2 = 
+all %>% 
+  ggplot(aes(x = log(TRACK_DISPLACEMENT), col = Surface))+
+  geom_freqpoly()+
+  theme_bw()
+p3 = 
+all %>% 
+  ggplot(aes(x = TOTAL_DISTANCE_TRAVELED, col = Surface))+
+  geom_freqpoly()+
+  theme_bw()
+
+p4 = 
+all %>% 
+  ggplot(aes(x = log(TOTAL_DISTANCE_TRAVELED), col = Surface))+
+  geom_freqpoly()+
+  theme_bw()
+
+
+```   
+
+```{r, fig.height=8, fig.width=12}
+
+plot_grid(p1, p2, p3, p4, ncol = 2 , align = "hv")
+
+```
+
+
+## Get some stats
+
+### I'm assuming my data does not follow a normal distribution: Wilcoxon test
+
+Maybe the appropriate test would be a Mann-Whitney if we consider the samples independent
+
+```{r}
+
+## get some values about tracks
+
+all %>%
+  group_by(Surface) %>% 
+  select(TRACK_DURATION, TRACK_MEAN_SPEED,TRACK_MEDIAN_SPEED, 
+         TOTAL_DISTANCE_TRAVELED, MEAN_DIRECTIONAL_CHANGE_RATE,
+         LINEARITY_OF_FORWARD_PROGRESSION) %>% 
+  summarise(across(everything(), list(mean = mean, median = median))) %>% 
+  t() %>% 
+  knitr::kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+
+## stat test 
+
+stat.disp <- all %>% wilcox_test(TRACK_DISPLACEMENT ~ Surface, 
+                                 ref.group = "Glass",
+                                 exact = FALSE, alternative = "less") %>%
+  add_significance()
+
+
+stat.tot <- all %>% wilcox_test(TOTAL_DISTANCE_TRAVELED ~ Surface, 
+                                ref.group = "Glass",
+                                 exact = FALSE, alternative = "less") %>%
+  add_significance()
+
+
+stat.lin <- all %>% wilcox_test(LINEARITY_OF_FORWARD_PROGRESSION ~ Surface, 
+                                ref.group = "Glass",
+                                 exact = FALSE, alternative = "less") %>%
+  add_significance()
+
+
+stat.dir <- all %>% wilcox_test(MEAN_DIRECTIONAL_CHANGE_RATE ~ Surface, 
+                                ref.group = "Glass",
+                                 exact = FALSE, alternative = "less") %>%
+  add_significance()
+
+
+stat.sp <- all %>% wilcox_test(TRACK_MEAN_SPEED ~ Surface, 
+                               ref.group = "Glass",
+                               exact = FALSE, alternative = "less") %>%
+  add_significance()
+
+
+# merge stats
+
+stats = list(stat.dir, stat.disp,stat.lin,stat.sp,stat.tot)
+
+all_stats = stats %>% 
+  purrr::reduce(full_join)
+
+all_stats %>% 
+  knitr::kable() %>% 
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+```
+
+
+```{r}
+
+## track displacement
+
+p1 = 
+all %>% 
+  ggplot(aes(x = xy, y = TRACK_DISPLACEMENT, fill = Surface))+
+  geom_violin()+
+  geom_jitter(color="black", size=0.7, alpha=0.25) +
+  theme_bw()+
+  labs(title = "No filtering")
+
+p2 = 
+all %>% 
+  filter(TRACK_DISPLACEMENT > 25) %>% 
+  ggplot(aes(x = xy, y = TRACK_DISPLACEMENT, fill = Surface))+
+  geom_boxplot()+
+  geom_jitter(color="black", size=0.4, alpha=0.9) +
+  theme_bw()+
+  labs(title = " >25 pixels ")
+
+## track total distance traveled
+
+p3 = 
+all %>% 
+  ggplot(aes(x = xy, y = TOTAL_DISTANCE_TRAVELED, fill = Surface))+
+  geom_violin()+
+  geom_jitter(color="black", size=0.7, alpha=0.25) +
+  theme_bw()+
+  labs(title = "No filtering")
+
+p4 = 
+all %>% 
+  filter(TRACK_DISPLACEMENT > 25) %>% 
+  ggplot(aes(x = xy, y = TOTAL_DISTANCE_TRAVELED, fill = Surface))+
+  geom_boxplot()+
+  geom_jitter(color="black", size=0.4, alpha=0.9) +
+  theme_bw()+
+  labs(title = " >25 pixels ")
+
+## linearity of travel
+
+p5 = 
+all %>% 
+  ggplot(aes(x = xy, y = LINEARITY_OF_FORWARD_PROGRESSION, fill = Surface))+
+  geom_violin()+
+  geom_jitter(color="black", size=0.7, alpha=0.25) +
+  theme_bw()+
+  labs(title = "Linearity of travel")
+
+## track mean speed
+
+p6 = 
+all %>% 
+  ggplot(aes(x = xy, y = MEAN_DIRECTIONAL_CHANGE_RATE, fill = Surface))+
+  geom_violin()+
+  geom_jitter(color="black", size=0.7, alpha=0.25) +
+  theme_bw()+
+  labs(title = "Mean directional change")
+
+```
+
+### Violin plots of motion parameters
+
+```{r, fig.width=15, fig.height=10}
+
+plot_grid(p1, p2, p3, p4, p5, p6, ncol = 2 , align = "hv")
+
+```
+
+```{r, fig.width=6, fig.height=4}
+p7 = 
+all %>% 
+  ggplot(aes(x = xy, y = TRACK_MEAN_SPEED, fill = Surface))+
+  geom_violin()+
+  geom_jitter(color="black", size=0.7, alpha=0.25) +
+  theme_bw()+
+  labs(title = "Mean speed")
+
+p7
+```
+
+
+-   TRACK_DISPLACEMENT: length of the vector between first frame point coordinates and last frame point coordinates
+
+-   TOTAL_DISTANCE_TRAVELED: total length of cell track
+
+-   LINEARITY OF FORWARD PROGRESSION : Linearity of travel = mean straight line speed /track mean speed.
+
+-   MEAN_DIRECTIONAL_CHANGE_RATE :measures the angle between two succeeding links, averaged over all the links of a track
+
+
+
+# Conclusions
+
+
+
+# R session info
+
+```{r}
+sessionInfo()
+```
