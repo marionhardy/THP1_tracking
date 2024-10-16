@@ -395,7 +395,7 @@ all %>%
   group_by(Surface) %>% 
   select(TRACK_DURATION, TRACK_MEAN_SPEED,TRACK_MEDIAN_SPEED, 
          TOTAL_DISTANCE_TRAVELED, MEAN_DIRECTIONAL_CHANGE_RATE,
-         LINEARITY_OF_FORWARD_PROGRESSION) %>% 
+         LINEARITY_OF_FORWARD_PROGRESSION, TRACK_DISPLACEMENT) %>% 
   summarise(across(everything(), list(mean = mean, median = median))) %>% 
   t() %>% 
   knitr::kable() %>% 
