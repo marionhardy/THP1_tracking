@@ -1,0 +1,44 @@
+//open a dialogue to select directory of images to open and assign it to a variable (eg input) 
+inputDir = getDirectory("input folder where images are stored"); 
+//open a dialogue to select location where images/results are to be stored 
+outputDir = getDirectory("output folder for results"); 
+//get list of files in the folder and assigns it to a variable array. 
+list = getFileList(inputDir); 
+setBatchMode("show");
+
+for (i = 0; i<list.length; i++) {
+	if (endsWith(list[i], "c2.tif")){}
+	else{
+	originalTitle = list[i];
+	if(originalTitle.contains("t01")){
+		// Extract the t01xXXc1 string for each image sequence
+		wherexy = originalTitle.indexOf("xy");
+		xyoi = substring(originalTitle, wherexy,lengthOf(originalTitle)-4);
+		print("Swapping Z and T for "+list[i]); 
+		titlenoextension =  substring(originalTitle, 0, lengthOf(originalTitle)-4);
+
+       	run("Image Sequence...", "open=&inputDir file="+xyoi+"  sort"); 
+		getDimensions(width, height, channels, slices, frames);
+	
+		if(frames>1){print("Your dimensions are already correct. No need for this macro.");}
+		else{
+		print("Originally, there was " + frames +" frame and "+slices+" slices");
+		run("Stack to Hyperstack...", "channels=" + channels + " slices=" + frames + " frames=" + slices);
+		// Check that the dimensions were indeed swapped
+		getDimensions(width, height, channels, slices, frames);
+		print("Now, there are " + frames +" frames and "+slices+" slice");
+		// Rename and show the new image
+		rename(titlenoextension+"_swapped");
+		print("Z and T dimensions swapped successfully for "+xyoi);
+       	saveAs("Tiff", outputDir + titlenoextension + "_swapped.tif");
+       	run("Close");
+				}
+	
+   			}
+	else{print("No file name contains t01");}
+	
+	}
+		
+}
+
+
